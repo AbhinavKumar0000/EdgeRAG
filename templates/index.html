@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Fast RAG Demo</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <h2>⚡ RAG Demo</h2>
+
+  <input type="file" id="pdf">
+  <button onclick="upload()">Upload</button>
+  <button onclick="clearDB()">Clear Session</button>
+
+  <div id="chat"></div>
+
+  <input id="q" placeholder="Ask a question">
+  <button onclick="ask()">Send</button>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

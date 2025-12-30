@@ -1,0 +1,5 @@
+body { font-family: sans-serif; background:#111; color:#eee; padding:20px }
+input, button { padding:8px; margin:4px }
+#chat { margin-top:20px }
+.q { color:#6cf; margin-top:10px }
+.a { color:#ccc; white-space:pre-wrap }
