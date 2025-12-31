@@ -1,118 +1,282 @@
-# EdgeRAG: Optimized Locally-Running RAG System
+# EdgeRAG
 
-**EdgeRAG** is a high-efficiency Retrieval-Augmented Generation (RAG) system designed to run with minimal resources while maintaining high fidelity. It eliminates the need for expensive cloud APIs (like OpenAI or Anthropic) by leveraging heavily optimized open-source models that can run on consumer hardware or free-tier Spaces.
+**A CPU-Optimized, End-to-End Retrieval-Augmented Generation System**
 
-![License](https://img.shields.io/badge/license-MIT-blue)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
-![Stack](https://img.shields.io/badge/stack-Flask%20%7C%20Tailwind%20%7C%20FAISS-forestgreen)
+## Overview
 
-## 🚀 Key Features
+EdgeRAG is an end-to-end Retrieval-Augmented Generation (RAG) system designed to run efficiently on CPU-only environments while preserving retrieval quality and generation faithfulness.
 
-*   **Zero External API Keys**: Fully independent stack. No OpenAI/Cohere keys required.
-*   **Optimized Inference**:
-    *   **Embedding**: Uses a custom fine-tuned `bge-small-en-v1.5` compressed to **ONNX INT8** with Matryoshka Reprsentation Learning (truncating dimensions from 384 → 128) without accuracy loss.
-    *   **Generation**: Uses `Qwen2.5-1.5B-Instruct` quantized to **GGUF Q4_K_M** for strictly CPU-based inference.
-*   **Private & Local**: Documents are ingested, chunked, and stored in a local FAISS index. Metadata never leaves your control (unless using the remote inference bridge).
-*   **Interactive UI**: A modern, responsive web interface built with pure **HTML/JS** and **TailwindCSS** (Glassmorphism design).
+The project focuses on model optimization under constraints, combining:
 
----
+- A fine-tuned embedding model optimized for retrieval
+- A quantized generative model optimized for CPU inference
+- A local-first design, with optional cloud APIs for demonstration and integration
 
-## 🛠️ Technology Stack
+Unlike API-wrapper RAG systems, EdgeRAG emphasizes:
 
-### Backend
-*   **Framework**: Python (Flask)
-*   **Vector Engine**: FAISS (Facebook AI Similarity Search) - `IndexFlatIP`
-*   **PDF Processing**: PyMuPDF (`fitz`)
-*   **Task Management**: Threaded remote requests for non-blocking UI.
+- Model selection and trade-offs
+- Training methodology
+- Quantization strategies
+- System-level efficiency
 
-### Frontend
-*   **Core**: HTML5, Vanilla JavaScript (ES6+)
-*   **Styling**: TailwindCSS (CDN) + Custom CSS Variables
-*   **Animations**: GSAP (GreenSock) for smooth section reveals.
+The complete system fits under ~1 GB total, making it suitable for edge devices and low-resource environments.
 
-### Models & Optimization
-| Component | Original Model | Optimization Applied | Final Artifact |
-| :--- | :--- | :--- | :--- |
-| **Embedding** | `BAAI/bge-small-en-v1.5` | Matryoshka (384->128 dim) + INT8 Quantization | **ONNX** (~33MB) |
-| **LLM** | `Qwen/Qwen2.5-1.5B` | GGUF Quantization (Q4_K_M) | **GGUF** (~900MB) |
+## System Architecture
 
----
+EdgeRAG consists of three main layers:
 
-## ⚙️ Installation & Setup
+### Embedding Layer
+- Converts text into dense vectors
+- Optimized for fast, CPU-based retrieval
 
-1.  **Clone the Repository**
-    ```bash
-    git clone https://github.com/yourusername/actual-rag.git
-    cd actual-rag
-    ```
+### Retrieval Layer
+- FAISS-based vector search
+- Local index built from user documents
 
-2.  **Create a Virtual Environment**
-    ```bash
-    python -m venv venv
-    # Windows
-    venv\Scripts\activate
-    # Linux/Mac
-    source venv/bin/activate
-    ```
+### Generation Layer
+- Autoregressive language model
+- Produces answers strictly grounded in retrieved context
 
-3.  **Install Dependencies**
-    ```bash
-    pip install flask requests pymupdf faiss-cpu numpy tqdm
-    ```
+The system supports:
+- Fully local execution via CLI
+- Cloud-hosted inference via FastAPI endpoints
+- A web-based demo interface
 
-4.  **Run the Application**
-    ```bash
-    python main.py
-    ```
-    The server will start at `http://127.0.0.1:5000`.
+## Embedding Model
 
----
+### Base Model Selection
 
-## 📖 Usage Guide
+**Base model:** bge-small-en
 
-1.  **Open the Web Interface**: Navigate to `http://localhost:5000` in your browser.
-2.  **Upload Context**:
-    *   Click on the **Upload PDF** area in the "Knowledge Base" card.
-    *   Select a PDF file (e.g., a research paper, manual).
-    *   The system will ingest, chunk, and index the file. Progress is shown in real-time.
-3.  **Ask Questions**:
-    *   Use the chat input on the right to ask questions about the document.
-    *   The AI will retrieve relevant chunks and stream the answer.
-4.  **Model Playground**:
-    *   Scroll down to the "Model Playground" section to test the raw embedding and generation endpoints independently.
+- **Architecture:** Sentence-level bi-encoder (Transformer encoder)
+- **Native embedding dimension:** 384
 
----
+bge-small-en was chosen for:
+- Strong retrieval performance
+- Efficient encoder-only architecture
+- Compatibility with contrastive fine-tuning
 
-## 🔌 API Endpoints
+### Fine-Tuning Strategy
 
-The Flask backend exposes the following endpoints:
+The embedding model was fine-tuned specifically for retrieval using contrastive learning.
 
-### `POST /upload`
-Ingests a PDF file into the vector store.
-*   **Body**: `multipart/form-data` with `file=@document.pdf`
-*   **Process**: Parsing -> Sliding Window Chunking -> Embedding -> FAISS Indexing.
+#### Dataset Construction
 
-### `POST /ask`
-Queries the RAG system.
-*   **Body**: `{"question": "What is the transformer architecture?"}`
-*   **Response**: Server-Sent Events (SSE) or simple streamed text response.
+A custom dataset (~150 samples) was generated using a triplet-based structure:
 
-### `POST /clear`
-Resets the session, deleting the temporary vector index and metadata.
+```json
+{
+  "anchor": "Research paper abstract",
+  "positive": "Paraphrased or semantically equivalent abstract",
+  "negative": "Unrelated research abstract"
+}
+```
 
----
+- **Anchors:** Original research-style abstracts
+- **Positives:** Semantically equivalent paraphrases
+- **Negatives:** Hard negatives sampled from unrelated topics
 
-## 🧠 Model Architecture
+The dataset was designed to maximize semantic separation, not just similarity scoring.
 
-### The "Small-to-Big" Optimization
-We prove that massive models are not always needed for specific tasks:
-1.  **Ingestion**: We use a sliding window approach (`chunk_size=500`, `overlap=100`) to maintain semantic continuity.
-2.  **Retrieval**: We use `IP` (Inner Product) similarity on normalized vectors, which is mathematically equivalent to Cosine Similarity but faster.
-3.  **Generation**: We use a prompted `Qwen-1.5B` model. The prompt enforces "Strict Context Adherence" to reduce hallucinations.
+#### Training Objective
 
-> **Note**: The inference endpoints are currently hosted on Hugging Face Spaces for demonstration stability, but the code is fully compatible with local `onnxruntime` and `llama-cpp-python` setups.
+- Triplet loss
+- Multi-ranking objective
 
----
+The goal was to:
+- Pull anchor–positive pairs closer
+- Push anchor–negative pairs farther apart
+- Increase retrieval margin rather than inflate cosine similarity
 
-## 📄 License
-MIT License. Free to use and modify.
+This improves robustness during nearest-neighbor search.
+
+### Matryoshka Representation Learning
+
+The model was trained using Matryoshka Representation Learning, enabling dimensional truncation without retraining.
+
+- **Native dimension:** 384
+- **Used dimension:** 128
+
+**Key idea:**
+- Earlier dimensions encode the most important semantic information
+- Later dimensions refine details
+
+By truncating embeddings to 128 dimensions:
+- Computation is reduced by ~67%
+- Retrieval quality (Recall@K) remains unchanged
+
+This makes the system significantly faster and lighter for CPU-based retrieval.
+
+### Embedding Model Optimization
+
+- **Format:** ONNX
+- **Precision:** INT8
+- **Final size:** ~32 MB
+- **Runtime:** ONNX Runtime (CPU)
+
+Post-training quantization was applied with calibration to preserve embedding quality.
+
+## Generative Model
+
+### Base Model Selection
+
+**Base model:** Qwen2.5-1.5B
+
+- **Architecture:** Autoregressive Transformer decoder
+- **Parameters:** ~1.5B
+- **Context length:** 32,768 tokens
+
+Qwen2.5-1.5B was selected for:
+- Strong instruction-following behavior
+- Long-context capability (important for RAG)
+- Good quantization characteristics
+
+### Quantization Strategy
+
+The generative model was quantized using GGUF Q5_K_M format.
+
+- **Baseline precision:** FP16
+- **Quantized precision:** Mixed 5-bit
+  - Attention layers: higher precision
+  - Feed-forward layers: lower precision
+
+This balances:
+- Memory footprint
+- Inference speed
+- Output quality
+
+### Final Generative Model Characteristics
+
+- **Format:** GGUF
+- **File size:** ~940 MB
+- **Runtime:** llama.cpp
+- **Inference:** CPU-only
+- **KV-cache enabled:** Yes
+
+Despite aggressive quantization, the model maintains strong faithfulness when grounded with retrieved context.
+
+## Performance Summary
+
+### Embedding Model
+
+| Metric | Baseline (FP32) | Optimized (INT8 + Matryoshka) |
+|--------|----------------|-------------------------------|
+| Size | ~382 MB | ~32 MB |
+| Dimensions | 384 | 128 |
+| Retrieval Quality | Preserved | Preserved |
+
+### Generative Model
+
+| Metric | Baseline (FP16) | Optimized (GGUF Q5_K_M) |
+|--------|----------------|------------------------|
+| Size | ~4 GB | ~940 MB |
+| GPU Required | Yes | No |
+| Context Length | 32K | 32K |
+
+## Local Execution (Recommended)
+
+For best performance and full control, the system can be run entirely locally via CLI.
+
+### Requirements
+
+- Python 3.10+
+- FAISS (CPU)
+- ONNX Runtime
+- llama.cpp compatible binary
+- Sufficient RAM (~8–12 GB recommended)
+
+### Local Workflow
+
+1. **Ingest documents**
+   - PDFs are chunked and embedded
+   - FAISS index is built locally
+
+2. **Run retrieval + generation**
+   - Queries are embedded
+   - Relevant chunks are retrieved
+   - Generation is constrained to retrieved context
+
+The main entry point for local execution is provided in the CLI files included in the repository.
+
+## Cloud Deployment & APIs
+
+For demonstration and integration purposes, EdgeRAG also supports cloud-hosted inference.
+
+### Deployed Endpoints
+
+#### Embedding API
+- Hosted via FastAPI
+- Uses the optimized ONNX INT8 embedding model
+
+#### Generation API
+- Hosted via FastAPI
+- Streams tokens from the quantized GGUF model
+
+**Important Note:**
+- These endpoints are used only for the web demo and optional integrations
+- Local CPU inference is the primary design
+- Cloud APIs exist for convenience, testing, and demos
+
+## Web Demo
+
+A web-based playground is included to demonstrate the system end-to-end:
+
+- Document upload
+- Retrieval
+- Streaming answer generation
+
+**Note:** Due to free-tier limitations, performance may vary. For accurate benchmarking and throughput, local execution is recommended.
+
+## Repository Structure
+
+The repository includes:
+
+- **Training files**
+  - Contrastive fine-tuning scripts
+  - Dataset generation logic
+
+- **Evaluation files**
+  - Retrieval and faithfulness evaluation
+
+- **Local runtime**
+  - CLI-based ingestion and querying
+  - FAISS index management
+
+- **API services**
+  - FastAPI embedding service
+  - FastAPI generation service with streaming
+
+- **Web interface**
+  - Demo website and UI logic
+
+Each component is modular and can be used independently.
+
+## Design Philosophy
+
+EdgeRAG was built with the following principles:
+
+- Optimize under constraints
+- Prefer measurable trade-offs over scaling
+- Preserve correctness while reducing cost
+- Treat deployment as part of model design
+
+This project demonstrates system-level ML engineering, not just model usage.
+
+## When to Use EdgeRAG
+
+- CPU-only environments
+- Edge devices
+- Low-resource servers
+- Research and evaluation setups
+- Custom RAG pipelines without vendor lock-in
+
+## Future Work
+
+- Larger contrastive datasets
+- Domain-specific embedding fine-tuning
+- Quantization-aware training
+- Hybrid local + remote orchestration
+
+## License
+
+This project is provided for research and educational purposes. Refer to individual model licenses for redistribution constraints.
