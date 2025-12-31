@@ -1,11 +1,12 @@
 from flask import Flask, render_template, request, Response, jsonify
-import os, shutil
+import os, shutil, tempfile
 
 from ingest_remote import Ingestor
 from engine_remote import RAGEngine
 
-INDEX = "faiss.index"
-META  = "meta.json"
+TMP_DIR = tempfile.gettempdir()
+INDEX = os.path.join(TMP_DIR, "faiss.index")
+META  = os.path.join(TMP_DIR, "meta.json")
 
 app = Flask(__name__)
 
@@ -23,13 +24,21 @@ def home():
 def upload():
     clear_db()
     pdf = request.files["file"]
-    pdf.save("temp.pdf")
+    pdf_path = os.path.join(TMP_DIR, "temp.pdf")
+    pdf.save(pdf_path)
 
     ing = Ingestor()
-    ing.ingest("temp.pdf", INDEX, META)
+    ing.ingest(pdf_path, INDEX, META)
 
-    os.remove("temp.pdf")
+    if os.path.exists(pdf_path):
+        os.remove(pdf_path)
     return {"status": "ok"}
+
+def stream_static_msg(msg):
+    import time
+    for word in msg.split():
+        yield word + " "
+        time.sleep(0.05)
 
 @app.post("/ask")
 def ask():
@@ -41,7 +50,7 @@ def ask():
     chunks = engine.retrieve(q)
 
     if not chunks:
-        return Response("OUT OF CONTEXT", mimetype="text/plain")
+        return Response(stream_static_msg("I couldn't find relevant information in the uploaded document to answer your question."), mimetype="text/plain")
 
     return Response(
         engine.stream_answer(q, chunks),

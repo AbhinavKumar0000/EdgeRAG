@@ -1,0 +1,6 @@
+flask
+requests
+pymupdf
+faiss-cpu
+numpy
+tqdm

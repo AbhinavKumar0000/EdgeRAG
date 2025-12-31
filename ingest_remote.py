@@ -33,6 +33,7 @@ class Ingestor:
                     "meta": {"page": p+1}
                 })
 
+        doc.close() # Explicitly close to release file lock
         embeds = self.embed([r["text"] for r in records])
 
         index = faiss.IndexFlatIP(EMBED_DIM)
